@@ -211,7 +211,10 @@ class _ViewResultScreenState extends State<ViewResultScreen> {
                           child: SingleChildScrollView(
                             controller: _promptScrollController,
                             physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.only(right: 12),
+                            padding: const EdgeInsets.only(
+                              right: 12,
+                              bottom: 12,
+                            ),
                             child: Text(
                               result.prompt,
                               style: Theme.of(context).textTheme.bodyLarge,
