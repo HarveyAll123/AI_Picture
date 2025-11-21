@@ -31,8 +31,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   late final AnimationController _transitionController;
   bool _showGeneratedImages = false;
   String? _fullScreenImageUrl;
+  int _fullScreenImageIndex = 0;
   bool _dontShowSceneWarning = false;
-  bool _hasShownWarning = false;
   bool _dontShowRegenerateWarning = false;
 
   @override
@@ -145,8 +145,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                       user.uid,
                                     ),
                                     onImageTap: (imageUrl) {
+                                      final generationState = ref.read(
+                                        generationControllerProvider,
+                                      );
+                                      final imageUrls = generationState
+                                          .generatedImages
+                                          .map((img) => img.imageUrl)
+                                          .toList();
+                                      final index = imageUrls.indexOf(imageUrl);
                                       setState(() {
                                         _fullScreenImageUrl = imageUrl;
+                                        _fullScreenImageIndex = index >= 0
+                                            ? index
+                                            : 0;
                                       });
                                     },
                                     transitionController: _transitionController,
@@ -206,8 +217,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                                   onChangePhoto: () =>
                                       _showImageSourceDialog(context, user.uid),
                                   onImageTap: (imageUrl) {
+                                    final generationState = ref.read(
+                                      generationControllerProvider,
+                                    );
+                                    final imageUrls = generationState
+                                        .generatedImages
+                                        .map((img) => img.imageUrl)
+                                        .toList();
+                                    final index = imageUrls.indexOf(imageUrl);
                                     setState(() {
                                       _fullScreenImageUrl = imageUrl;
+                                      _fullScreenImageIndex = index >= 0
+                                          ? index
+                                          : 0;
                                     });
                                   },
                                   transitionController: _transitionController,
@@ -253,12 +275,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ),
           ),
           if (_fullScreenImageUrl != null)
-            _FullScreenImageOverlay(
-              imageUrl: _fullScreenImageUrl!,
-              onClose: () {
-                setState(() {
-                  _fullScreenImageUrl = null;
-                });
+            Builder(
+              builder: (context) {
+                final generationState = ref.watch(generationControllerProvider);
+                final imageUrls = generationState.generatedImages
+                    .map((img) => img.imageUrl)
+                    .toList();
+                return _FullScreenImageOverlay(
+                  imageUrls: imageUrls.isNotEmpty
+                      ? imageUrls
+                      : [_fullScreenImageUrl!],
+                  initialIndex: _fullScreenImageIndex,
+                  onClose: () {
+                    setState(() {
+                      _fullScreenImageUrl = null;
+                    });
+                  },
+                  onIndexChanged: (index) {
+                    setState(() {
+                      _fullScreenImageIndex = index;
+                      if (imageUrls.isNotEmpty && index < imageUrls.length) {
+                        _fullScreenImageUrl = imageUrls[index];
+                      }
+                    });
+                  },
+                );
               },
             ),
         ],
@@ -266,28 +307,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Future<void> _showSceneWarningDialog(BuildContext context) async {
-    if (_dontShowSceneWarning || _hasShownWarning) return;
+  Future<bool> _showSceneWarningDialog(BuildContext context) async {
+    if (_dontShowSceneWarning) return true;
 
-    return showDialog<void>(
-      context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.7),
-      builder: (context) => _SceneWarningDialog(
-        onDontShowAgain: () {
-          setState(() {
-            _dontShowSceneWarning = true;
-            _hasShownWarning = true;
-          });
-          Navigator.of(context).pop();
-        },
-        onOk: () {
-          setState(() {
-            _hasShownWarning = true;
-          });
-          Navigator.of(context).pop();
-        },
-      ),
-    );
+    final dontShowAgain =
+        await showDialog<bool>(
+          context: context,
+          useRootNavigator: true,
+          barrierColor: Colors.black.withValues(alpha: 0.7),
+          builder: (context) => const _SceneWarningDialog(),
+        ) ??
+        false;
+
+    setState(() {
+      if (dontShowAgain) {
+        _dontShowSceneWarning = true;
+      }
+    });
+
+    return true;
   }
 
   Future<void> _showErrorDialog(BuildContext context, String error) async {
@@ -307,41 +345,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      isScrollControlled: false,
-      builder: (context) => SceneSelectionModal(
-        selectedSceneIds: _selectedSceneIds,
-        onReset: () {
-          setState(() {
-            _selectedSceneIds.clear();
-            _hasShownWarning = false;
-          });
-        },
-        onSceneToggled: (sceneId) {
-          setState(() {
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      barrierColor: Colors.black.withValues(alpha: 0.65),
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.66,
+        minChildSize: 0.45,
+        maxChildSize: 0.88,
+        builder: (context, scrollController) => SceneSelectionModal(
+          scrollController: scrollController,
+          initialSelectedSceneIds: _selectedSceneIds,
+          onReachedFive: () => _showSceneWarningDialog(context),
+          onApply: (selectedIds) async {
             final previousCount = _selectedSceneIds.length;
-            if (_selectedSceneIds.contains(sceneId)) {
-              _selectedSceneIds.remove(sceneId);
-            } else {
-              _selectedSceneIds.add(sceneId);
-            }
-            final newCount = _selectedSceneIds.length;
+            final newCount = selectedIds.length;
 
-            // Reset warning flag if count drops below 5
-            if (newCount < 5) {
-              _hasShownWarning = false;
+            final shouldShowWarning =
+                previousCount < 5 && newCount >= 5 && !_dontShowSceneWarning;
+
+            if (shouldShowWarning) {
+              final acknowledged = await _showSceneWarningDialog(context);
+              if (!acknowledged) {
+                return false;
+              }
             }
 
-            // Show warning when transitioning from 4 to 5
-            if (previousCount == 4 &&
-                newCount == 5 &&
-                !_dontShowSceneWarning &&
-                !_hasShownWarning) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _showSceneWarningDialog(context);
-              });
-            }
-          });
-        },
+            setState(() {
+              _selectedSceneIds
+                ..clear()
+                ..addAll(selectedIds);
+            });
+
+            return true;
+          },
+        ),
       ),
     );
   }
@@ -351,6 +390,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      barrierColor: Colors.black.withValues(alpha: 0.65),
       builder: (context) => ImageSourceModal(uid: uid),
     );
   }
@@ -387,9 +427,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         .toList();
 
     final stylePrompts = selectedPresets.map((preset) {
-      return 'Generate a photorealistic portrait variation that keeps the subject\'s facial identity, skin tone, and expression consistent. '
+      return 'Generate a photorealistic portrait variation that preserves the subject’s unique facial identity, skin tone, and natural hair color/texture while allowing scene-appropriate adjustments to expression, pose, wardrobe, and accessories.'
+          ' Hair may be clipped, styled, or accessorized to match the scene, but the underlying hair color, length, and texture must remain authentic (no artificial recoloring or drastic changes). '
           '${preset.prompt} '
-          'Use cohesive lighting, realistic shadows, and natural textures.';
+          'Eliminate any watermark, logo, or text artifacts, and if the input is a screenshot remove all system UI (status bars, navigation buttons, etc.) before finalizing the scene. Ensure cohesive lighting, realistic shadows, and natural textures throughout.';
     }).toList();
 
     try {
@@ -439,12 +480,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
 class _FullScreenImageOverlay extends StatefulWidget {
   const _FullScreenImageOverlay({
-    required this.imageUrl,
+    required this.imageUrls,
+    required this.initialIndex,
     required this.onClose,
+    this.onIndexChanged,
   });
 
-  final String imageUrl;
+  final List<String> imageUrls;
+  final int initialIndex;
   final VoidCallback onClose;
+  final ValueChanged<int>? onIndexChanged;
 
   @override
   State<_FullScreenImageOverlay> createState() =>
@@ -453,24 +498,37 @@ class _FullScreenImageOverlay extends StatefulWidget {
 
 class _FullScreenImageOverlayState extends State<_FullScreenImageOverlay>
     with TickerProviderStateMixin {
-  late final TransformationController _transformationController;
+  late final List<TransformationController> _transformationControllers;
   late final AnimationController _fadeController;
   late final AnimationController _zoomController;
-  bool _isZoomed = false;
+  late final PageController _pageController;
+  late final List<bool> _isZoomedStates;
+  int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _transformationController = TransformationController();
-    _transformationController.addListener(() {
-      final isZoomed =
-          _transformationController.value.getMaxScaleOnAxis() > 1.0;
-      if (isZoomed != _isZoomed) {
-        setState(() {
-          _isZoomed = isZoomed;
-        });
-      }
-    });
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+    _transformationControllers = List.generate(
+      widget.imageUrls.length,
+      (index) => TransformationController(),
+    );
+    _isZoomedStates = List.generate(widget.imageUrls.length, (index) => false);
+
+    // Add listeners to all controllers
+    for (int i = 0; i < _transformationControllers.length; i++) {
+      _transformationControllers[i].addListener(() {
+        final isZoomed =
+            _transformationControllers[i].value.getMaxScaleOnAxis() > 1.0;
+        if (isZoomed != _isZoomedStates[i]) {
+          setState(() {
+            _isZoomedStates[i] = isZoomed;
+          });
+        }
+      });
+    }
+
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -484,11 +542,26 @@ class _FullScreenImageOverlayState extends State<_FullScreenImageOverlay>
 
   @override
   void dispose() {
-    _transformationController.dispose();
+    for (final controller in _transformationControllers) {
+      controller.dispose();
+    }
     _fadeController.dispose();
     _zoomController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
+
+  void _onPageChanged(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+    widget.onIndexChanged?.call(index);
+  }
+
+  bool get _isZoomed => _isZoomedStates[_currentIndex];
+
+  TransformationController get _currentTransformationController =>
+      _transformationControllers[_currentIndex];
 
   void _resetZoom() {
     // Stop any ongoing animation first
@@ -496,25 +569,72 @@ class _FullScreenImageOverlayState extends State<_FullScreenImageOverlay>
     _zoomController.reset();
 
     // Capture the exact current transformation at this moment
-    final currentValue = Matrix4.copy(_transformationController.value);
+    final controller = _currentTransformationController;
+    final currentValue = Matrix4.copy(controller.value);
     final targetValue = Matrix4.identity();
 
     // Set the current value immediately to ensure we start from the exact position
-    _transformationController.value = currentValue;
+    controller.value = currentValue;
 
-    final animation = Tween<Matrix4>(begin: currentValue, end: targetValue)
+    final animation = Matrix4Tween(begin: currentValue, end: targetValue)
         .animate(
           CurvedAnimation(parent: _zoomController, curve: Curves.easeInOut),
         );
 
     animation.addListener(() {
       if (_zoomController.isAnimating) {
-        _transformationController.value = animation.value;
+        controller.value = animation.value;
       }
     });
 
     _zoomController.forward().then((_) {
-      _transformationController.value = targetValue;
+      controller.value = targetValue;
+    });
+  }
+
+  void _handleDoubleTap(TapDownDetails details, int index) {
+    final controller = _transformationControllers[index];
+    final currentScale = controller.value.getMaxScaleOnAxis();
+    final isZoomed = currentScale > 1.0;
+
+    // Stop any ongoing animation
+    _zoomController.stop();
+    _zoomController.reset();
+
+    final screenSize = MediaQuery.of(context).size;
+    final focalPoint = details.localPosition;
+
+    Matrix4 targetMatrix;
+    if (isZoomed) {
+      // Zoom out to identity
+      targetMatrix = Matrix4.identity();
+    } else {
+      // Zoom in to 2.5x at the tap location
+      final scale = 2.5;
+      final centerX = screenSize.width / 2;
+      final centerY = screenSize.height / 2;
+
+      targetMatrix = Matrix4.identity()
+        ..translate(centerX, centerY)
+        ..scale(scale)
+        ..translate(-focalPoint.dx, -focalPoint.dy);
+    }
+
+    final currentValue = Matrix4.copy(controller.value);
+
+    final animation = Matrix4Tween(begin: currentValue, end: targetMatrix)
+        .animate(
+          CurvedAnimation(parent: _zoomController, curve: Curves.easeInOut),
+        );
+
+    animation.addListener(() {
+      if (_zoomController.isAnimating) {
+        controller.value = animation.value;
+      }
+    });
+
+    _zoomController.forward().then((_) {
+      controller.value = targetMatrix;
     });
   }
 
@@ -525,7 +645,8 @@ class _FullScreenImageOverlayState extends State<_FullScreenImageOverlay>
   }
 
   Future<void> _downloadImage() async {
-    final success = await ImageService.saveImageToGallery(widget.imageUrl);
+    final imageUrl = widget.imageUrls[_currentIndex];
+    final success = await ImageService.saveImageToGallery(imageUrl);
     if (mounted) {
       Fluttertoast.showToast(
         msg: success ? 'Image saved!' : 'Failed to save image.',
@@ -539,52 +660,69 @@ class _FullScreenImageOverlayState extends State<_FullScreenImageOverlay>
     return FadeTransition(
       opacity: _fadeController,
       child: Material(
-        color: Colors.black.withValues(alpha: 0.85),
+        color: Colors.black.withValues(alpha: 0.9),
         child: Stack(
           children: [
             Positioned.fill(
-              child: InteractiveViewer(
-                transformationController: _transformationController,
-                minScale: 1.0,
-                maxScale: 4.0,
-                boundaryMargin: EdgeInsets.zero,
-                child: AnimatedBuilder(
-                  animation: _transformationController,
-                  builder: (context, child) {
-                    final scale = _transformationController.value
-                        .getMaxScaleOnAxis();
-                    final isZoomed = scale > 1.0;
-                    return Container(
-                      decoration: BoxDecoration(
-                        border: isZoomed
-                            ? Border.all(
-                                color: Colors.white.withValues(alpha: 0.3),
-                                width: 2,
-                              )
-                            : null,
-                        borderRadius: isZoomed
-                            ? BorderRadius.circular(8)
-                            : null,
+              child: PageView.builder(
+                controller: _pageController,
+                onPageChanged: _onPageChanged,
+                physics: _isZoomed
+                    ? const NeverScrollableScrollPhysics()
+                    : const PageScrollPhysics(),
+                itemCount: widget.imageUrls.length,
+                itemBuilder: (context, index) {
+                  final controller = _transformationControllers[index];
+                  final isZoomed = _isZoomedStates[index];
+                  return GestureDetector(
+                    onDoubleTapDown: (details) =>
+                        _handleDoubleTap(details, index),
+                    child: InteractiveViewer(
+                      transformationController: controller,
+                      minScale: 1.0,
+                      maxScale: 4.0,
+                      boundaryMargin: EdgeInsets.zero,
+                      child: AnimatedBuilder(
+                        animation: controller,
+                        builder: (context, child) {
+                          return Container(
+                            decoration: BoxDecoration(
+                              border: isZoomed
+                                  ? Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                      width: 2,
+                                    )
+                                  : null,
+                              borderRadius: isZoomed
+                                  ? BorderRadius.circular(8)
+                                  : null,
+                            ),
+                            child: ClipRRect(
+                              borderRadius: isZoomed
+                                  ? BorderRadius.circular(8)
+                                  : BorderRadius.zero,
+                              child: CachedNetworkImage(
+                                imageUrl: widget.imageUrls[index],
+                                fit: BoxFit.contain,
+                                placeholder: (context, url) => const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                                errorWidget: (context, url, error) =>
+                                    const Icon(
+                                      Icons.error,
+                                      size: 40,
+                                      color: Colors.white,
+                                    ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                      child: ClipRRect(
-                        borderRadius: isZoomed
-                            ? BorderRadius.circular(8)
-                            : BorderRadius.zero,
-                        child: CachedNetworkImage(
-                          imageUrl: widget.imageUrl,
-                          fit: BoxFit.contain,
-                          placeholder: (context, url) =>
-                              const Center(child: CircularProgressIndicator()),
-                          errorWidget: (context, url, error) => const Icon(
-                            Icons.error,
-                            size: 40,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
               ),
             ),
             Positioned(
@@ -1227,7 +1365,8 @@ class _GeneratePanel extends StatelessWidget {
                     onPressed: () {
                       showModalBottomSheet(
                         context: context,
-                        backgroundColor: Colors.black.withValues(alpha: 0.5),
+                        backgroundColor: Colors.transparent,
+                        barrierColor: Colors.black.withValues(alpha: 0.65),
                         isScrollControlled: true,
                         builder: (context) => DraggableScrollableSheet(
                           initialChildSize: 0.85,
@@ -1281,13 +1420,7 @@ class _GeneratePanel extends StatelessWidget {
 }
 
 class _SceneWarningDialog extends StatefulWidget {
-  const _SceneWarningDialog({
-    required this.onDontShowAgain,
-    required this.onOk,
-  });
-
-  final VoidCallback onDontShowAgain;
-  final VoidCallback onOk;
+  const _SceneWarningDialog();
 
   @override
   State<_SceneWarningDialog> createState() => _SceneWarningDialogState();
@@ -1298,6 +1431,7 @@ class _SceneWarningDialogState extends State<_SceneWarningDialog>
   late final AnimationController _controller;
   late final Animation<double> _scaleAnimation;
   late final Animation<double> _fadeAnimation;
+  bool _dontShowAgain = false;
 
   @override
   void initState() {
@@ -1321,6 +1455,10 @@ class _SceneWarningDialogState extends State<_SceneWarningDialog>
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  void _handleContinue() {
+    Navigator.of(context, rootNavigator: true).pop(_dontShowAgain);
   }
 
   @override
@@ -1401,50 +1539,52 @@ class _SceneWarningDialogState extends State<_SceneWarningDialog>
                     ),
                   ),
                   const SizedBox(height: 28),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: widget.onOk,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.indigoAccent,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            elevation: 4,
-                          ),
-                          child: const Text(
-                            'Got it',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _handleContinue,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.indigoAccent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        elevation: 4,
+                      ),
+                      child: const Text(
+                        'Continue',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: widget.onDontShowAgain,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white70,
-                            side: BorderSide(
-                              color: Colors.white.withValues(alpha: 0.2),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                          child: const Text(
-                            'Don\'t show again',
-                            style: TextStyle(fontSize: 14),
-                          ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Checkbox(
+                        value: _dontShowAgain,
+                        onChanged: (value) {
+                          setState(() {
+                            _dontShowAgain = value ?? false;
+                          });
+                        },
+                        activeColor: Colors.indigoAccent,
+                        checkColor: Colors.white,
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _dontShowAgain = !_dontShowAgain;
+                          });
+                        },
+                        child: Text(
+                          'Don\'t show again',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Colors.white70, fontSize: 12),
                         ),
                       ),
                     ],

@@ -6,14 +6,16 @@ import '../models/scene_preset.dart';
 class SceneSelectionModal extends StatefulWidget {
   const SceneSelectionModal({
     super.key,
-    required this.selectedSceneIds,
-    required this.onSceneToggled,
-    required this.onReset,
+    required this.initialSelectedSceneIds,
+    required this.onApply,
+    this.onReachedFive,
+    this.scrollController,
   });
 
-  final Set<String> selectedSceneIds;
-  final ValueChanged<String> onSceneToggled;
-  final VoidCallback onReset;
+  final Set<String> initialSelectedSceneIds;
+  final Future<bool> Function(Set<String>) onApply;
+  final Future<bool> Function()? onReachedFive;
+  final ScrollController? scrollController;
 
   @override
   State<SceneSelectionModal> createState() => _SceneSelectionModalState();
@@ -21,14 +23,16 @@ class SceneSelectionModal extends StatefulWidget {
 
 class _SceneSelectionModalState extends State<SceneSelectionModal> {
   late Set<String> _localSelectedIds;
+  bool _isSubmitting = false;
 
   @override
   void initState() {
     super.initState();
-    _localSelectedIds = Set.from(widget.selectedSceneIds);
+    _localSelectedIds = Set.from(widget.initialSelectedSceneIds);
   }
 
-  void _handleSceneToggle(String sceneId) {
+  Future<void> _handleSceneToggle(String sceneId) async {
+    final previousCount = _localSelectedIds.length;
     setState(() {
       if (_localSelectedIds.contains(sceneId)) {
         _localSelectedIds.remove(sceneId);
@@ -36,7 +40,35 @@ class _SceneSelectionModalState extends State<SceneSelectionModal> {
         _localSelectedIds.add(sceneId);
       }
     });
-    widget.onSceneToggled(sceneId);
+
+    final newCount = _localSelectedIds.length;
+    if (widget.onReachedFive != null &&
+        previousCount < 5 &&
+        newCount >= 5) {
+      await widget.onReachedFive!();
+    }
+  }
+
+  void _handleReset() {
+    setState(() {
+      _localSelectedIds.clear();
+    });
+  }
+
+  Future<void> _handleApply() async {
+    if (_localSelectedIds.isEmpty || _isSubmitting) return;
+    setState(() {
+      _isSubmitting = true;
+    });
+    final shouldClose =
+        await widget.onApply(Set<String>.from(_localSelectedIds));
+    if (!mounted) return;
+    setState(() {
+      _isSubmitting = false;
+    });
+    if (shouldClose) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -46,24 +78,30 @@ class _SceneSelectionModalState extends State<SceneSelectionModal> {
         .map((p) => p.title)
         .toList();
 
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
+        child: SingleChildScrollView(
+          controller: widget.scrollController,
+          padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade600,
-                  borderRadius: BorderRadius.circular(2),
+              Align(
+                alignment: Alignment.center,
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade600,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
               Row(
@@ -72,51 +110,54 @@ class _SceneSelectionModalState extends State<SceneSelectionModal> {
                   Text(
                     'Select Scenes',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _localSelectedIds.clear();
-                      });
-                      widget.onReset();
-                    },
-                    child: const Text('Reset'),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed:
+                            _localSelectedIds.isEmpty ? null : _handleReset,
+                        child: const Text('Reset'),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
                   ),
                 ],
               ),
               const SizedBox(height: 6),
               Text(
                 'Choose your scene(s) to generate',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: Colors.white70),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Colors.white70),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               SizedBox(
-                height: 220,
+                height: 240,
                 child: PageView.builder(
                   itemCount: (scenePresets.length / 2).ceil(),
                   itemBuilder: (context, pageIndex) {
                     final startIndex = pageIndex * 2;
-                    final endIndex = (startIndex + 2).clamp(
-                      0,
-                      scenePresets.length,
-                    );
+                    final endIndex =
+                        (startIndex + 2).clamp(0, scenePresets.length);
                     return Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         for (int i = startIndex; i < endIndex; i++)
                           Padding(
                             padding: EdgeInsets.only(
-                              bottom: i < endIndex - 1 ? 10 : 0,
+                              bottom: i < endIndex - 1 ? 14 : 0,
                             ),
                             child: _SceneOption(
                               preset: scenePresets[i],
-                              isSelected: _localSelectedIds.contains(
-                                scenePresets[i].id,
-                              ),
+                              isSelected:
+                                  _localSelectedIds.contains(scenePresets[i].id),
                               onTap: () =>
                                   _handleSceneToggle(scenePresets[i].id),
                             ),
@@ -126,7 +167,7 @@ class _SceneSelectionModalState extends State<SceneSelectionModal> {
                   },
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 20),
               if (selectedNames.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -185,6 +226,59 @@ class _SceneSelectionModalState extends State<SceneSelectionModal> {
                     ).textTheme.bodySmall?.copyWith(color: Colors.white54),
                   ),
                 ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _localSelectedIds.isEmpty || _isSubmitting
+                      ? null
+                      : _handleApply,
+                  style: ButtonStyle(
+                    backgroundColor: MaterialStateProperty.resolveWith((states) {
+                      const base = Colors.indigoAccent;
+                      if (states.contains(MaterialState.disabled)) {
+                        return base.withOpacity(0.35);
+                      }
+                      return base;
+                    }),
+                    foregroundColor:
+                        MaterialStateProperty.all<Color>(Colors.white),
+                    padding: MaterialStateProperty.all(
+                      const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    shape: MaterialStateProperty.all(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    textStyle: MaterialStateProperty.all(
+                      const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle_outline, size: 20),
+                            SizedBox(width: 8),
+                            Text('Done'),
+                          ],
+                        ),
+                ),
+              ),
             ],
           ),
         ),

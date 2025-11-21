@@ -13,7 +13,7 @@ const node_fetch_1 = __importDefault(require("node-fetch"));
 const generative_ai_1 = require("@google/generative-ai");
 const uuid_1 = require("uuid");
 (0, app_1.initializeApp)();
-const MODEL_NAME = 'gemini-2.5-flash-image';
+const MODEL_NAME = 'gemini-2.5-flash-image'; // 'gemini-3-pro-image-preview' or 'gemini-2.5-flash-image'
 exports.generateProfilePicture = (0, https_1.onCall)({
     region: 'us-central1',
     secrets: ['GEMINI_API_KEY'],
@@ -77,7 +77,7 @@ async function runGemini(source, prompt, apiKey) {
     const model = genAI.getGenerativeModel({
         model: MODEL_NAME,
         generationConfig: {
-            temperature: 0.65,
+            temperature: 0.65, // 0.35 or 0.65
         },
     });
     const result = await model.generateContent([

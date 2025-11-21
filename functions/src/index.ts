@@ -9,7 +9,7 @@ import {v4 as uuidv4} from 'uuid';
 
 initializeApp();
 
-const MODEL_NAME = 'gemini-2.5-flash-image';
+const MODEL_NAME = 'gemini-2.5-flash-image'; // 'gemini-3-pro-image-preview' or 'gemini-2.5-flash-image'
 
 export const generateProfilePicture = onCall(
     {
@@ -98,7 +98,7 @@ async function runGemini(
   const model = genAI.getGenerativeModel({
     model: MODEL_NAME,
     generationConfig: {
-      temperature: 0.65,
+      temperature: 0.65, // 0.35 or 0.65
     },
   });
 
