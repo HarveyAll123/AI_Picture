@@ -48,7 +48,7 @@ class UploadController extends StateNotifier<UploadState> {
   final ImagePicker _picker;
   final StorageService _storageService;
 
-  Future<void> pickAndUpload(String uid, {ImageSource source = ImageSource.gallery}) async {
+  Future<bool> pickAndUpload(String uid, {ImageSource source = ImageSource.gallery}) async {
     try {
       final picked = await _picker.pickImage(
         source: source,
@@ -56,7 +56,7 @@ class UploadController extends StateNotifier<UploadState> {
         imageQuality: 90,
       );
       if (picked == null) {
-        return;
+        return false;
       }
 
       final file = File(picked.path);
@@ -76,6 +76,7 @@ class UploadController extends StateNotifier<UploadState> {
         storagePath: result.path,
         isUploading: false,
       );
+      return true;
     } catch (error) {
       state = state.copyWith(isUploading: false, error: error.toString());
       rethrow;

@@ -1,4 +1,4 @@
-## AI Profile Picture Generator (Android-First)
+## AI Picture (Android-First)
 
 This project delivers a production-ready Android experience for generating AI-enhanced profile photos with Flutter, Firebase, and Google Gemini. The same codebase can be launched on iOS, but **iOS builds are considered experimental** right now. Expect occasional visual glitches (e.g., notch overlaps, transition flicker) because the design has been optimized for Android phones/tablets. Ship Android; treat iOS as “best effort” until additional QA is performed.
 
@@ -91,16 +91,26 @@ The Flutter client reads this via `flutter_dotenv` to fail early when the key is
 
 ### Frontend (Flutter + Riverpod)
 
-| Screen | Responsibilities |
-| --- | --- |
-| `HomeScreen` | Anonymous sign-in guard, image picker (gallery/camera), prompt editor, generation state, fancy scrollbars |
-| `GalleryScreen` | Streams `users/{uid}/results` in Firestore, grid with download/copy buttons |
-| `ViewResultScreen` | Hero-style viewer with zoom/reset, prompt copy, download |
+The app now follows a **Single Screen Architecture** with a window-like modal system.
 
-Supporting layers:
-- `providers/*`: Riverpod controllers for auth, uploads, generations, Firestore queries
-- `services/*`: thin wrappers around Firebase Auth, Storage, Functions, Firestore, Gemini client
-- `widgets/*`: reusable UI pieces (primary buttons, error sheets, loading overlay, etc.)
+| Screen / Component | Responsibilities |
+| --- | --- |
+| `HomeScreen` | The primary orchestrator. Handles image preview, generation flow, and acts as the container for all "window" overlays. Implements a custom `PopScope` to handle back navigation within the single-screen context. |
+| `SceneSelectionModal` | A pop-out "window" for selecting scenes. Uses a `PageView` for horizontal sliding of scene options. Supports multi-selection (2-6 scenes) with visual feedback. |
+| `HistoryModal` | A dedicated "window" for browsing all previously generated images. Features a grid layout with edge-to-edge scrolling and full-screen previews. |
+| `FullScreenImageOverlay` | A specialized overlay for viewing images in full detail. Supports pinch-to-zoom (constrained to edges), pan, reset zoom animation, and high-quality downloading. |
+| `ImageSourceModal` | A compact modal for choosing between Camera and Gallery inputs. |
+
+### Key Features
+
+- **Multi-Image Generation**: Generate 2 to 6 variations at once based on selected scenes.
+- **Window-Like Experience**: Scene selection, History, and Upload flows appear as pop-out windows over the main content, preserving context.
+- **Smart UI Transitions**: Fade-in/out, slide animations, and smooth zoom resets (`Tween<Matrix4>`).
+- **Custom Warnings & Errors**:
+  - **Scene Limit**: Fancy animated dialog when selecting 5+ scenes, with a "Don't show again" option.
+  - **Regeneration**: Warning when generating new images would archive current ones.
+  - **Error Handling**: Stylish error dialogs with copy-to-clipboard functionality for easier debugging.
+- **Edge-to-Edge Display**: Intelligent image fitting (Cover/Contain) based on orientation to eliminate gray bars.
 
 ### Backend (Firebase)
 
@@ -137,7 +147,7 @@ Supporting layers:
 
 4. **Transport & Logging**
    - All Firebase traffic is HTTPS.
-   - Errors are surfaced in-app via a persistent `ErrorDisplay` widget with copy-to-clipboard for support.
+   - Errors are surfaced in-app via a custom animated `ErrorDialog` with copy-to-clipboard for support.
 
 5. **Platform Caveats**
    - Android is the reference platform (tested on API 26–34, phones + tablets).

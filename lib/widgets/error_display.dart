@@ -3,11 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
 class ErrorDisplay extends StatelessWidget {
-  const ErrorDisplay({
-    super.key,
-    required this.error,
-    this.onDismiss,
-  });
+  const ErrorDisplay({super.key, required this.error, this.onDismiss});
 
   final String error;
   final VoidCallback? onDismiss;
@@ -26,23 +22,16 @@ class ErrorDisplay extends StatelessWidget {
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.red.shade900.withOpacity(0.2),
+        color: Colors.red.shade900.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.red.shade700,
-          width: 1.5,
-        ),
+        border: Border.all(color: Colors.red.shade700, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(
-                Icons.error_outline,
-                color: Colors.red.shade400,
-                size: 20,
-              ),
+              Icon(Icons.error_outline, color: Colors.red.shade400, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -55,11 +44,7 @@ class ErrorDisplay extends StatelessWidget {
                 ),
               ),
               IconButton(
-                icon: Icon(
-                  Icons.close,
-                  color: Colors.red.shade300,
-                  size: 20,
-                ),
+                icon: Icon(Icons.close, color: Colors.red.shade300, size: 20),
                 onPressed: onDismiss,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
@@ -81,11 +66,7 @@ class ErrorDisplay extends StatelessWidget {
             alignment: Alignment.centerRight,
             child: TextButton.icon(
               onPressed: () => _copyToClipboard(context, error),
-              icon: Icon(
-                Icons.copy,
-                size: 16,
-                color: Colors.red.shade300,
-              ),
+              icon: Icon(Icons.copy, size: 16, color: Colors.red.shade300),
               label: Text(
                 'Copy Error',
                 style: TextStyle(
@@ -101,7 +82,7 @@ class ErrorDisplay extends StatelessWidget {
                 ),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                backgroundColor: Colors.red.shade900.withOpacity(0.3),
+                backgroundColor: Colors.red.shade900.withValues(alpha: 0.3),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -113,4 +94,3 @@ class ErrorDisplay extends StatelessWidget {
     );
   }
 }
-

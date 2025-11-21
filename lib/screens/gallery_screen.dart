@@ -56,18 +56,21 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Your Gallery')),
-      body: SafeArea(
-        child: resultsAsync.when(
-          data: (results) {
-            if (results.isEmpty) {
-              return const EmptyState(
+      body: resultsAsync.when(
+        data: (results) {
+          if (results.isEmpty) {
+            return const SafeArea(
+              child: EmptyState(
                 title: 'No results yet',
                 subtitle: 'Generate your first AI headshot to see it here.',
-              );
-            }
-            return LayoutBuilder(
+              ),
+            );
+          }
+          return SafeArea(
+            child: LayoutBuilder(
               builder: (context, constraints) {
                 final width = constraints.maxWidth;
+                final height = constraints.maxHeight;
                 final crossAxisCount = width > 1200
                     ? 4
                     : width > 900
@@ -75,50 +78,71 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
                         : width > 600
                             ? 2
                             : 1;
-                return NotificationListener<ScrollNotification>(
-                  onNotification: (notification) {
-                    if (notification is ScrollStartNotification) {
-                      _onScrollStart();
-                    } else if (notification is ScrollEndNotification) {
-                      _onScrollEnd();
-                    }
-                    return false;
-                  },
-                  child: Scrollbar(
-                    controller: _gridController,
-                    thumbVisibility: _showScrollbar,
-                    trackVisibility: _showScrollbar,
-                    child: GridView.builder(
-                      controller: _gridController,
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: crossAxisCount,
-                        mainAxisSpacing: 16,
-                        crossAxisSpacing: 16,
-                        childAspectRatio: 0.8,
+
+                return SizedBox(
+                  height: height,
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      if (notification is ScrollStartNotification) {
+                        _onScrollStart();
+                      } else if (notification is ScrollEndNotification) {
+                        _onScrollEnd();
+                      } else if (notification is ScrollUpdateNotification) {
+                        // Keep scrollbar visible while scrolling
+                        if (!_showScrollbar && mounted) {
+                          setState(() => _showScrollbar = true);
+                        }
+                        _scrollbarTimer?.cancel();
+                      }
+                      return true; // Consume the notification to prevent parent scrolling
+                    },
+                    child: ScrollConfiguration(
+                      behavior: ScrollConfiguration.of(context).copyWith(
+                        overscroll: false,
+                        physics: const ClampingScrollPhysics(),
                       ),
-                      itemCount: results.length,
-                      itemBuilder: (context, index) {
-                        final result = results[index];
-                        return ResultCard(
-                          result: result,
-                          onTap: () {
-                            Navigator.of(context).pushNamed(
-                              ViewResultScreen.routeName,
-                              arguments: result,
+                      child: Scrollbar(
+                        controller: _gridController,
+                        thumbVisibility: _showScrollbar,
+                        trackVisibility: _showScrollbar,
+                        child: GridView.builder(
+                          controller: _gridController,
+                          primary: false, // Use explicit controller
+                          physics: const ClampingScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: crossAxisCount,
+                            mainAxisSpacing: 16,
+                            crossAxisSpacing: 16,
+                            childAspectRatio: 0.8,
+                          ),
+                          itemCount: results.length,
+                          itemBuilder: (context, index) {
+                            final result = results[index];
+                            return ResultCard(
+                              result: result,
+                              onTap: () {
+                                Navigator.of(context).pushNamed(
+                                  ViewResultScreen.routeName,
+                                  arguments: result,
+                                );
+                              },
                             );
                           },
-                        );
-                      },
+                        ),
+                      ),
                     ),
                   ),
                 );
               },
-            );
-          },
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) =>
-              Center(child: Text('Failed to load gallery: $error')),
+            ),
+          );
+        },
+        loading: () =>
+            const SafeArea(child: Center(child: CircularProgressIndicator())),
+        error: (error, _) => SafeArea(
+          child: Center(child: Text('Failed to load gallery: $error')),
         ),
       ),
     );

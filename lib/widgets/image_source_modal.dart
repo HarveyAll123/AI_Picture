@@ -18,25 +18,26 @@ class ImageSourceModal extends ConsumerWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 24),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade600,
-                  borderRadius: BorderRadius.circular(2),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 24),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade600,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
               Text(
                 'Select Image Source',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 24),
               Row(
@@ -48,12 +49,14 @@ class ImageSourceModal extends ConsumerWidget {
                       onTap: () async {
                         Navigator.pop(context);
                         try {
-                          await ref
+                          final success = await ref
                               .read(uploadControllerProvider.notifier)
                               .pickAndUpload(uid, source: ImageSource.gallery);
-                          Fluttertoast.showToast(
-                            msg: 'Image uploaded successfully.',
-                          );
+                          if (success && context.mounted) {
+                            Fluttertoast.showToast(
+                              msg: 'Image uploaded successfully.',
+                            );
+                          }
                         } catch (error) {
                           // Error shown in UI
                         }
@@ -68,12 +71,14 @@ class ImageSourceModal extends ConsumerWidget {
                       onTap: () async {
                         Navigator.pop(context);
                         try {
-                          await ref
+                          final success = await ref
                               .read(uploadControllerProvider.notifier)
                               .pickAndUpload(uid, source: ImageSource.camera);
-                          Fluttertoast.showToast(
-                            msg: 'Image captured successfully.',
-                          );
+                          if (success && context.mounted) {
+                            Fluttertoast.showToast(
+                              msg: 'Image captured successfully.',
+                            );
+                          }
                         } catch (error) {
                           // Error shown in UI
                         }
@@ -82,8 +87,9 @@ class ImageSourceModal extends ConsumerWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-            ],
+                const SizedBox(height: 16),
+              ],
+            ),
           ),
         ),
       ),
@@ -113,18 +119,14 @@ class _SourceButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(
             border: Border.all(
-              color: Colors.indigoAccent.withOpacity(0.3),
+              color: Colors.indigoAccent.withValues(alpha: 0.3),
               width: 1.5,
             ),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
             children: [
-              Icon(
-                icon,
-                size: 32,
-                color: Colors.indigoAccent,
-              ),
+              Icon(icon, size: 32, color: Colors.indigoAccent),
               const SizedBox(height: 12),
               Text(
                 label,
@@ -141,4 +143,3 @@ class _SourceButton extends StatelessWidget {
     );
   }
 }
-

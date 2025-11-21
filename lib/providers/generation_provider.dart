@@ -3,25 +3,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/cloud_functions_service.dart';
 import 'service_providers.dart';
 
+class GeneratedImage {
+  const GeneratedImage({
+    required this.imageUrl,
+    required this.prompt,
+    required this.resultId,
+  });
+
+  final String imageUrl;
+  final String prompt;
+  final String resultId;
+}
+
 class GenerationState {
   const GenerationState({
     this.isGenerating = false,
-    this.generatedUrl,
+    this.generatedImages = const [],
     this.error,
   });
 
   final bool isGenerating;
-  final String? generatedUrl;
+  final List<GeneratedImage> generatedImages;
   final String? error;
 
   GenerationState copyWith({
     bool? isGenerating,
-    String? generatedUrl,
+    List<GeneratedImage>? generatedImages,
     String? error,
   }) {
     return GenerationState(
       isGenerating: isGenerating ?? this.isGenerating,
-      generatedUrl: generatedUrl ?? this.generatedUrl,
+      generatedImages: generatedImages ?? this.generatedImages,
       error: error,
     );
   }
@@ -35,25 +47,36 @@ class GenerationController extends StateNotifier<GenerationState> {
 
   final CloudFunctionsService _cloudFunctionsService;
 
-  Future<String> generateProfileVariant({
+  Future<List<GeneratedImage>> generateMultipleVariants({
     required String uid,
     required String originalImagePath,
     required String imageUrl,
-    required String stylePrompt,
+    required List<String> stylePrompts,
   }) async {
     state = state.copyWith(isGenerating: true, error: null);
-    try {
-      // Call Firebase Cloud Function which handles:
-      // 1) Gemini image generation
-      // 2) Uploading to Storage at users/{uid}/generated/{resultId}.jpg
-      // 3) Saving metadata to Firestore at users/{uid}/results
-      final generatedUrl = await _cloudFunctionsService.generateProfilePicture(
-        imageUrl: imageUrl,
-        prompt: stylePrompt,
-      );
+    final List<GeneratedImage> results = [];
 
-      state = state.copyWith(isGenerating: false, generatedUrl: generatedUrl);
-      return generatedUrl;
+    try {
+      for (int i = 0; i < stylePrompts.length; i++) {
+        final prompt = stylePrompts[i];
+        final response = await _cloudFunctionsService.generateProfilePicture(
+          imageUrl: imageUrl,
+          prompt: prompt,
+        );
+
+        results.add(
+          GeneratedImage(
+            imageUrl: response['imageUrl']!,
+            prompt: prompt,
+            resultId:
+                response['resultId'] ??
+                '${DateTime.now().millisecondsSinceEpoch}_$i',
+          ),
+        );
+      }
+
+      state = state.copyWith(isGenerating: false, generatedImages: results);
+      return results;
     } catch (error) {
       state = state.copyWith(isGenerating: false, error: error.toString());
       rethrow;
@@ -62,6 +85,10 @@ class GenerationController extends StateNotifier<GenerationState> {
 
   void clearError() {
     state = state.copyWith(error: null);
+  }
+
+  void clearGeneratedImages() {
+    state = state.copyWith(generatedImages: []);
   }
 }
 
